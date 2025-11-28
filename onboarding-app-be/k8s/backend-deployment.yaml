@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: onboarding-app-be
+  labels:
+    app: onboarding-app-be
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: onboarding-app-be
+  template:
+    metadata:
+      labels:
+        app: onboarding-app-be
+    spec:
+      containers:
+      - name: onboarding-app-be
+        image: hungndacr.azurecr.io/my-api:latest
+        ports:
+        - containerPort: 3000
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 20

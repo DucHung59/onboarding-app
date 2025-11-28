@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: onboarding-app-fe
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: onboarding-app-fe
+  template:
+    metadata:
+      labels:
+        app: onboarding-app-fe
+    spec:
+      containers:
+      - name: onboarding-app-fe
+        image: hungndacr.azurecr.io/my-frontend:latest
+        ports:
+        - containerPort: 80
