@@ -38,3 +38,25 @@ spec:
             port: 3000
           initialDelaySeconds: 15
           periodSeconds: 20
+        env:
+        - name: PORT
+          value: "3000"
+        - name: REDIRECT_URI
+          value: "https://52-246-136-171.sslip.io/api/auth/callback"
+        - name: OIDC_ISSUER
+          value: "https://id-dev.mindx.edu.vn"
+        - name: CLIENT_ID
+          value: "mindx-onboarding"
+        - name: POST_LOGIN_REDIRECT
+          value: "https://52-246-136-171.sslip.io/"
+        - name: CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oidc-secret
+              key: CLIENT_SECRET
+        - name: SESSION_SECRET
+          valueFrom: 
+            secretKeyRef:
+              name: oidc-secret
+              key: SESSION_SECRET
+

@@ -63,12 +63,23 @@ Tạo file `.env` trong thư mục `onboarding-app-be`:
 PORT=3000
 NODE_ENV=development
 
+# OIDC Configuration
+OIDC_ISSUER=https://id-dev.mindx.edu.vn
+CLIENT_ID=mindx-onboarding
+CLIENT_SECRET=your-client-secret-here
+REDIRECT_URI=http://localhost:3000/api/auth/callback
+POST_LOGIN_REDIRECT=http://localhost:8080
+SESSION_SECRET=your-session-secret-here
+
 # Thêm các biến môi trường khác nếu cần
 # DATABASE_URL=...
 # API_KEY=...
 ```
 
-**Lưu ý**: File `.env` không nên được commit vào Git. Đảm bảo nó đã có trong `.gitignore`.
+**Lưu ý**: 
+- File `.env` không nên được commit vào Git. Đảm bảo nó đã có trong `.gitignore`.
+- Thay thế các giá trị OIDC bằng giá trị thực tế từ OIDC provider của bạn.
+- `SESSION_SECRET` nên là một chuỗi ngẫu nhiên mạnh (ít nhất 32 ký tự).
 
 ### 4. Verify Installation
 ```bash
@@ -107,13 +118,17 @@ Server sẽ chạy tại `http://localhost:3000` và tự động reload khi b�
 ```
 onboarding-app-be/
 ├── src/                          # Source code
-│   ├── index.ts                  # Entry point của ứng dụng
-│   └── routes/                   # API routes
-│       └── hello.ts              # Example route
+│   ├── config/
+│   │   └── oidc.ts              # OIDC client configuration
+│   ├── routes/                   # API routes
+│   │   ├── auth.route.ts        # OIDC authentication routes
+│   │   └── hello.route.ts       # Example route
+│   ├── types/                    # TypeScript type definitions
+│   │   └── express-session.d.ts # Session type extensions
+│   └── index.ts                  # Entry point của ứng dụng
 ├── k8s/                          # Kubernetes deployment manifests
-│   ├── backend-deployment.yaml   # Deployment configuration
-│   ├── backend-service.yaml      # Service configuration
-│   └── backend-ingress.yaml      # Ingress configuration
+│   ├── backend-deployment.yaml  # Deployment configuration
+│   └── backend-service.yaml      # Service configuration
 ├── dist/                         # Compiled JavaScript (generated, không commit)
 ├── node_modules/                 # Dependencies (không commit)
 ├── .env                          # Environment variables (không commit)
@@ -129,13 +144,17 @@ onboarding-app-be/
 #### Giải Thích Các Thư Mục và Files
 
 - **`src/`**: Chứa toàn bộ source code TypeScript
-  - `index.ts`: Entry point, khởi tạo Express server và cấu hình routes
-  - `routes/`: Chứa các route handlers, mỗi file route export một Express router
+  - `index.ts`: Entry point, khởi tạo Express server, cấu hình CORS, session, và routes
+  - `config/oidc.ts`: Cấu hình OIDC client với `openid-client` library
+  - `routes/`: Chứa các route handlers
+    - `auth.route.ts`: OIDC authentication routes (login, callback, logout, me, check)
+    - `hello.route.ts`: Example route
+  - `types/`: TypeScript type definitions
+    - `express-session.d.ts`: Extend Express session types với user info
 
 - **`k8s/`**: Kubernetes manifests cho deployment
-  - `backend-deployment.yaml`: Định nghĩa Deployment với pods, replicas, resources
+  - `backend-deployment.yaml`: Định nghĩa Deployment với pods, replicas, resources, và environment variables
   - `backend-service.yaml`: Định nghĩa Service để expose pods
-  - `backend-ingress.yaml`: Định nghĩa Ingress để route external traffic
 
 - **`dist/`**: Thư mục chứa compiled JavaScript từ TypeScript (tự động generate khi chạy `npm run build`)
 
@@ -176,6 +195,144 @@ Project sử dụng TypeScript với strict mode. Đảm bảo:
 - Sử dụng TypeScript types cho tất cả functions và variables
 - Follow ESLint rules (nếu có)
 - Format code với Prettier (nếu có)
+
+---
+
+## 🔐 OIDC Authentication
+
+### Overview
+
+Backend sử dụng OpenID Connect (OIDC) để xác thực users. Implementation sử dụng thư viện `openid-client` với PKCE (Proof Key for Code Exchange) flow.
+
+### Authentication Flow
+
+1. **User clicks login** → Frontend redirects đến `/api/auth/login`
+2. **Backend generates OIDC authorization URL** với:
+   - State (CSRF protection)
+   - Nonce (replay attack protection)
+   - Code challenge (PKCE)
+3. **User authenticates** trên OIDC provider
+4. **OIDC provider redirects** về `/api/auth/callback` với authorization code
+5. **Backend exchanges code** cho access token và ID token
+6. **Backend fetches user info** và lưu vào session
+7. **User được redirect** về frontend
+
+### API Endpoints
+
+#### `GET /api/auth/login`
+Bắt đầu OIDC login flow. Redirects user đến OIDC provider.
+
+#### `GET /api/auth/callback`
+OIDC callback handler. Xử lý authorization code và tạo session.
+
+**Query Parameters:**
+- `code`: Authorization code từ OIDC provider
+- `state`: State parameter để verify CSRF
+
+#### `GET /api/auth/me`
+Lấy thông tin user hiện tại từ session.
+
+**Response:**
+```json
+{
+  "authenticated": true,
+  "user": {
+    "sub": "user-id",
+    "email": "user@example.com",
+    "name": "User Name"
+  }
+}
+```
+
+#### `GET /api/auth/check`
+Kiểm tra trạng thái đăng nhập.
+
+**Response:**
+```json
+{
+  "loggedIn": true,
+  "user": { ... }
+}
+```
+
+#### `GET /api/auth/logout`
+Đăng xuất user và destroy session. Redirects về frontend.
+
+### OIDC Configuration
+
+File `src/config/oidc.ts` chứa cấu hình OIDC client:
+
+```typescript
+import { Issuer, Client } from "openid-client";
+
+export async function createOidcClient(): Promise<Client> {
+  const issuer = await Issuer.discover(process.env.OIDC_ISSUER!);
+  
+  client = new issuer.Client({
+    client_id: process.env.CLIENT_ID!,
+    client_secret: process.env.CLIENT_SECRET!,
+    redirect_uris: [process.env.REDIRECT_URI!],
+    response_types: ["code"]
+  });
+  
+  return client;
+}
+```
+
+### Session Management
+
+Backend sử dụng `express-session` để quản lý sessions:
+
+```typescript
+app.use(session({
+  secret: process.env.SESSION_SECRET!,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false, // Set true khi deploy với HTTPS
+    httpOnly: true,
+  }
+}));
+```
+
+**Lưu ý**: 
+- Trong production với HTTPS, set `secure: true`
+- `SESSION_SECRET` nên là một chuỗi ngẫu nhiên mạnh
+- Xem xét sử dụng Redis hoặc database-backed session store cho production
+
+### Environment Variables
+
+Các biến môi trường cần thiết cho OIDC:
+
+```bash
+OIDC_ISSUER=https://id-dev.mindx.edu.vn        # OIDC provider URL
+CLIENT_ID=mindx-onboarding                     # Client ID từ OIDC provider
+CLIENT_SECRET=your-client-secret               # Client secret từ OIDC provider
+REDIRECT_URI=http://localhost:3000/api/auth/callback  # Callback URL
+POST_LOGIN_REDIRECT=http://localhost:8080      # Frontend URL sau khi login
+SESSION_SECRET=your-session-secret             # Secret để encrypt session
+```
+
+### CORS Configuration
+
+Backend cấu hình CORS để cho phép frontend gọi API:
+
+```typescript
+app.use(cors({
+  origin: "http://localhost:8080", // Frontend URL
+  credentials: true, // Cho phép gửi cookies
+}));
+```
+
+**Lưu ý**: Cập nhật `origin` trong production để match với frontend domain.
+
+### Security Features
+
+- **PKCE**: Sử dụng code challenge để tăng cường bảo mật
+- **State Parameter**: CSRF protection
+- **Nonce**: Replay attack protection
+- **HttpOnly Cookies**: Session cookies không thể truy cập từ JavaScript
+- **Secure Cookies**: (Trong production) Chỉ gửi cookies qua HTTPS
 
 ---
 

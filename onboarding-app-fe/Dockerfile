@@ -1,10 +1,10 @@
-# Stage 1: Build
+# Stage 1: Build React app
 FROM node:20-alpine AS build
 
 # Set working directory
 WORKDIR /app
 
-# Copy package.json & package-lock.json trước để tận dụng cache
+# Copy package.json & package-lock.json first to leverage cache
 COPY package*.json ./
 
 # Install dependencies
@@ -24,6 +24,9 @@ RUN rm -rf /usr/share/nginx/html/*
 
 # Copy built app from previous stage
 COPY --from=build /app/build /usr/share/nginx/html
+
+# Copy custom nginx config for SPA routing
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 80
 EXPOSE 80
