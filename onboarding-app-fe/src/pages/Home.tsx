@@ -44,7 +44,7 @@ export default function AppHeader() {
   const handleLogout = () => {
     localStorage.removeItem("user");
     const apiBaseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000/';
-    const logoutUrl = `${apiBaseUrl}auth/logout`;
+    const logoutUrl = `${apiBaseUrl}/auth/logout`;
     window.location.href = logoutUrl;
   };
 

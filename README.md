@@ -302,12 +302,17 @@ docker push <your-acr-name>.azurecr.io/my-api:latest
 ```bash
 cd onboarding-app-fe
 
-# Build image với tag ACR
-docker build -t <your-acr-name>.azurecr.io/my-frontend:latest .
+# Build image với tag ACR và build-time ARG cho REACT_APP_API_BASE_URL
+docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t <your-acr-name>.azurecr.io/my-frontend:latest .
 
 # Push image lên ACR
 docker push <your-acr-name>.azurecr.io/my-frontend:latest
 ```
+
+**Lưu ý quan trọng**: 
+- Frontend Dockerfile yêu cầu build-time ARG `REACT_APP_API_BASE_URL`
+- Thay thế `https://your-domain.com/api` bằng URL production của backend API
+- Environment variable này được embed vào JavaScript bundle khi build, không thể thay đổi sau khi build xong
 
 ### 4. Cấu hình ACR với AKS (Attach ACR to AKS)
 
@@ -534,8 +539,11 @@ docker push <acr-name>.azurecr.io/my-api:latest
 
 # Frontend
 cd onboarding-app-fe
-docker build -t <acr-name>.azurecr.io/my-frontend:latest .
+docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t <acr-name>.azurecr.io/my-frontend:latest .
 docker push <acr-name>.azurecr.io/my-frontend:latest
+```
+
+**Lưu ý**: Thay thế `https://your-domain.com/api` bằng URL production của backend API.
 ```
 
 2. **Update Kubernetes Manifests:**
