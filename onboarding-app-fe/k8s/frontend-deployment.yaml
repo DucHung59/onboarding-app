@@ -17,3 +17,6 @@ spec:
         image: hungndacr.azurecr.io/my-frontend:latest
         ports:
         - containerPort: 80
+        env:
+        - name: REACT_APP_API_BASE_URL
+          value: "https://52-246-136-171.sslip.io/api"

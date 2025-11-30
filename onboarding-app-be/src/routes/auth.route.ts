@@ -102,7 +102,7 @@ router.get("/me", (req: Request, res: Response) => {
 // --------------------------------------------------------
 router.get("/logout", (req: Request, res: Response) => {
   req.session.destroy(() => {
-    res.redirect("https://52-246-136-171.sslip.io/");
+    res.redirect(process.env.POST_LOGIN_REDIRECT || "http://localhost:8080");
   });
 });
 

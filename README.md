@@ -6,6 +6,7 @@
 
 - [Tổng quan](#tổng-quan)
 - [Cấu trúc dự án](#cấu-trúc-dự-án)
+- [Quick Start - Setup Sau Khi Pull Từ Git](#quick-start---setup-sau-khi-pull-từ-git)
 - [Setup Local Development](#setup-local-development)
 - [Docker Build](#docker-build)
 - [Azure Container Registry (ACR) Setup](#azure-container-registry-acr-setup)
@@ -16,10 +17,10 @@
 ## 🎯 Tổng quan
 
 Dự án bao gồm:
-- **Backend API**: Node.js/Express với TypeScript, xử lý xác thực OIDC
-- **Frontend**: React với TypeScript, giao diện người dùng
-- **Infrastructure**: Kubernetes manifests cho deployment trên AKS
-- **CI/CD**: Docker images được lưu trữ trên ACR
+- **Backend API**: Node.js/Express với TypeScript, xử lý xác thực OIDC qua OpenID Connect
+- **Frontend**: React với TypeScript, giao diện người dùng với tích hợp OIDC authentication
+- **Infrastructure**: Kubernetes manifests cho deployment trên AKS với Ingress routing
+- **CI/CD**: Docker images được lưu trữ trên ACR, hỗ trợ multi-stage build
 
 ## 📁 Cấu trúc dự án
 
@@ -64,6 +65,55 @@ challenger-onboarding-app/
         └── ingress.yaml         # Ingress configuration
 ```
 
+## ⚡ Quick Start - Setup Sau Khi Pull Từ Git
+
+Sau khi clone hoặc pull code từ Git, thực hiện các bước sau để setup môi trường local:
+
+### Backend
+
+```bash
+cd onboarding-app-be
+
+# 1. Cài đặt dependencies
+npm install
+
+# 2. Copy file mẫu và tạo .env
+cp env.example .env
+# Windows: copy env.example .env
+
+# 3. Chỉnh sửa .env với các giá trị thực tế
+# Đặc biệt chú ý: CLIENT_SECRET, SESSION_SECRET, OIDC_ISSUER
+
+# 4. Build và chạy
+npm run build
+npm run dev
+```
+
+### Frontend
+
+```bash
+cd onboarding-app-fe
+
+# 1. Cài đặt dependencies
+npm install
+
+# 2. Copy file mẫu và tạo .env.local
+cp env.example .env.local
+# Windows: copy env.example .env.local
+
+# 3. Chỉnh sửa .env.local với API base URL
+# REACT_APP_API_BASE_URL=http://localhost:3000/api
+
+# 4. Chạy development server
+npm start
+```
+
+**Lưu ý quan trọng:**
+- File `.env` và `.env.local` **KHÔNG** được commit vào Git (đã có trong `.gitignore`)
+- File `env.example` là template, **CÓ THỂ** commit vào Git
+- Mỗi developer cần tạo file `.env` riêng với giá trị phù hợp với môi trường của họ
+- Production sử dụng environment variables từ Kubernetes secrets, không dùng file `.env`
+
 ## 🚀 Setup Local Development
 
 ### Yêu cầu
@@ -84,7 +134,14 @@ cd onboarding-app-be
 npm install
 ```
 
-3. **Tạo file `.env` trong thư mục `onboarding-app-be/`:**
+3. **Copy file mẫu và tạo file `.env`:**
+```bash
+cd onboarding-app-be
+cp env.example .env
+# Hoặc trên Windows: copy env.example .env
+```
+
+Sau đó chỉnh sửa file `.env` với các giá trị thực tế:
 ```env
 PORT=3000
 OIDC_ISSUER=https://id-dev.mindx.edu.vn
@@ -93,6 +150,7 @@ CLIENT_SECRET=your-client-secret-here
 REDIRECT_URI=http://localhost:3000/api/auth/callback
 POST_LOGIN_REDIRECT=http://localhost:8080
 SESSION_SECRET=your-session-secret-here
+CORS_ORIGIN=http://localhost:8080
 ```
 
 4. **Build TypeScript:**
@@ -119,12 +177,21 @@ cd onboarding-app-fe
 npm install
 ```
 
-3. **Cập nhật API base URL trong `src/api/api.ts`** (nếu cần):
-```typescript
-const api = axios.create({
-  baseURL: 'http://localhost:3000/api', // hoặc URL backend của bạn
-});
+3. **Copy file mẫu và tạo file `.env.local`:**
+```bash
+cd onboarding-app-fe
+cp env.example .env.local
+# Hoặc trên Windows: copy env.example .env.local
 ```
+
+Sau đó chỉnh sửa file `.env.local` với API base URL:
+```env
+REACT_APP_API_BASE_URL=http://localhost:3000/
+```
+
+**Lưu ý**: URL phải kết thúc bằng dấu `/` để axios hoạt động đúng.
+
+**Lưu ý**: Create React App sử dụng prefix `REACT_APP_` cho environment variables. Code đã tự động đọc từ biến môi trường này.
 
 4. **Chạy frontend:**
 ```bash
@@ -158,10 +225,17 @@ docker run -p 3000:3000 \
 
 ### Frontend Docker Build
 
-1. **Build Docker image:**
+Frontend Dockerfile sử dụng build-time ARG để inject `REACT_APP_API_BASE_URL` vào build process.
+
+1. **Build Docker image với build-time ARG:**
 ```bash
 cd onboarding-app-fe
-docker build -t onboarding-app-fe:latest .
+
+# Build với API URL cho local development
+docker build --build-arg REACT_APP_API_BASE_URL=http://localhost:3000/ -t onboarding-app-fe:latest .
+
+# Hoặc build với API URL cho production
+docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t onboarding-app-fe:latest .
 ```
 
 2. **Chạy container:**
@@ -170,6 +244,11 @@ docker run -p 80:80 onboarding-app-fe:latest
 ```
 
 Frontend sẽ chạy tại `http://localhost`
+
+**Lưu ý quan trọng**: 
+- `REACT_APP_API_BASE_URL` phải được set tại build-time (qua `--build-arg`)
+- Environment variable này được embed vào JavaScript bundle khi build
+- Không thể thay đổi sau khi build xong
 
 ### Multi-stage Build
 
@@ -337,13 +416,23 @@ kubectl apply -f onboarding-app-fe/k8s/frontend-deployment.yaml
 
 ### 9. Deploy Ingress
 
+Ingress được cấu hình để route:
+- `/api/(.*)` → Backend service (onboarding-app-be-service)
+- `/(.*)` → Frontend service (onboarding-app-fe-service)
+
 ```bash
 # Lấy External IP của Ingress Controller
 kubectl get service ingress-nginx-controller -n ingress-nginx
 
 # Cập nhật host trong ingress.yaml với IP của bạn (hoặc domain)
+# File: infra/k8s/ingress.yaml
 kubectl apply -f infra/k8s/ingress.yaml
 ```
+
+**Lưu ý**: 
+- Ingress sử dụng path rewrite: `/api/(.*)` được rewrite thành `/$1` khi forward đến backend
+- Ví dụ: Request đến `/api/health` sẽ được forward đến backend như `/health`
+- Frontend được serve từ root path `/(.*)` để support React Router
 
 ### 10. Kiểm tra Deployment
 
@@ -406,18 +495,31 @@ SESSION_SECRET=<random-secret-for-session-encryption>
 
 ### 4. API Endpoints
 
-- `GET /api/auth/login` - Bắt đầu OIDC login flow
-- `GET /api/auth/callback` - OIDC callback handler
-- `GET /api/auth/me` - Lấy thông tin user hiện tại
+Backend cung cấp các endpoints sau:
+
+- `GET /health` - Health check endpoint (dùng cho Kubernetes probes)
+- `GET /api/auth/login` - Bắt đầu OIDC login flow, redirect đến OIDC provider
+- `GET /api/auth/callback` - OIDC callback handler, xử lý authorization code
+- `GET /api/auth/me` - Lấy thông tin user hiện tại từ session
 - `GET /api/auth/check` - Kiểm tra trạng thái đăng nhập
-- `GET /api/auth/logout` - Đăng xuất
+- `GET /api/auth/logout` - Đăng xuất và destroy session
+- `GET /api/hello` - Example route (có thể xóa trong production)
 
 ### 5. Frontend Integration
 
-Frontend sử dụng `oidc-client-ts` để tích hợp với OIDC. Các component chính:
+Frontend sử dụng Axios để gọi API backend. Các component và pages chính:
 
-- `btnLoginOID.tsx` - Nút đăng nhập
-- `protectedRoute.tsx` - Route protection middleware
+- **Pages**:
+  - `Home.tsx` - Trang chủ, hiển thị trạng thái authentication và nút login/logout
+  - `Login.tsx` - Trang đăng nhập
+  - `About.tsx` - Trang về (protected route, yêu cầu authentication)
+
+- **Components**:
+  - `btnLoginOID.tsx` - Component xử lý login/logout với OIDC
+  - `protectedRoute.tsx` - Higher-order component để bảo vệ routes
+
+- **API Client**:
+  - `api.ts` - Axios instance được cấu hình với `baseURL` từ `REACT_APP_API_BASE_URL`
 
 ## 📦 Deployment
 

@@ -56,7 +56,17 @@ Lệnh này sẽ cài đặt:
 
 ### 3. Cấu Hình Environment Variables
 
-Tạo file `.env` trong thư mục `onboarding-app-be`:
+**Copy file mẫu và tạo file `.env`:**
+
+```bash
+# Copy file mẫu
+cp env.example .env
+
+# Hoặc trên Windows
+copy env.example .env
+```
+
+Sau đó chỉnh sửa file `.env` với các giá trị thực tế của bạn:
 
 ```bash
 # .env
@@ -69,17 +79,27 @@ CLIENT_ID=mindx-onboarding
 CLIENT_SECRET=your-client-secret-here
 REDIRECT_URI=http://localhost:3000/api/auth/callback
 POST_LOGIN_REDIRECT=http://localhost:8080
-SESSION_SECRET=your-session-secret-here
 
-# Thêm các biến môi trường khác nếu cần
-# DATABASE_URL=...
-# API_KEY=...
+# Session Configuration
+SESSION_SECRET=your-session-secret-here-change-this-in-production
+
+# CORS Configuration
+CORS_ORIGIN=http://localhost:8080
 ```
 
+**Lưu ý về các biến môi trường**:
+- `PORT`: Port mà server sẽ listen (mặc định: 3000)
+- `REDIRECT_URI`: URL callback từ OIDC provider, phải match với cấu hình trên OIDC provider
+- `POST_LOGIN_REDIRECT`: URL frontend sau khi login thành công
+- `CORS_ORIGIN`: URL frontend, phải match chính xác (bao gồm protocol và port nếu có)
+- `SESSION_SECRET`: Secret để encrypt session, nên là chuỗi ngẫu nhiên mạnh (ít nhất 32 ký tự)
+
 **Lưu ý**: 
-- File `.env` không nên được commit vào Git. Đảm bảo nó đã có trong `.gitignore`.
+- File `.env` không được commit vào Git (đã có trong `.gitignore`).
+- File `env.example` là template, có thể commit vào Git.
 - Thay thế các giá trị OIDC bằng giá trị thực tế từ OIDC provider của bạn.
 - `SESSION_SECRET` nên là một chuỗi ngẫu nhiên mạnh (ít nhất 32 ký tự).
+- `CORS_ORIGIN` phải khớp với URL frontend của bạn.
 
 ### 4. Verify Installation
 ```bash
@@ -219,35 +239,67 @@ Backend sử dụng OpenID Connect (OIDC) để xác thực users. Implementatio
 
 ### API Endpoints
 
+#### `GET /health`
+Health check endpoint, được sử dụng cho Kubernetes readiness và liveness probes.
+
+**Response:**
+```json
+{
+  "status": "ok"
+}
+```
+
 #### `GET /api/auth/login`
-Bắt đầu OIDC login flow. Redirects user đến OIDC provider.
+Bắt đầu OIDC login flow. Tạo authorization URL với PKCE, state, nonce và redirects user đến OIDC provider.
+
+**Flow:**
+1. Generate state, nonce, code_verifier, code_challenge
+2. Lưu vào session
+3. Redirect đến OIDC provider authorization URL
 
 #### `GET /api/auth/callback`
 OIDC callback handler. Xử lý authorization code và tạo session.
 
 **Query Parameters:**
 - `code`: Authorization code từ OIDC provider
-- `state`: State parameter để verify CSRF
+- `state`: State parameter để verify CSRF (so sánh với session)
+
+**Flow:**
+1. Verify state từ query params với state trong session
+2. Exchange authorization code cho tokens (sử dụng code_verifier từ session)
+3. Verify nonce trong ID token
+4. Fetch user info từ OIDC provider
+5. Lưu user info vào session
+6. Redirect về frontend (POST_LOGIN_REDIRECT)
 
 #### `GET /api/auth/me`
 Lấy thông tin user hiện tại từ session.
 
-**Response:**
+**Response (authenticated):**
 ```json
 {
   "authenticated": true,
   "user": {
     "sub": "user-id",
     "email": "user@example.com",
-    "name": "User Name"
+    "username": "username",
+    "displayName": "Display Name",
+    ...
   }
+}
+```
+
+**Response (not authenticated):**
+```json
+{
+  "authenticated": false
 }
 ```
 
 #### `GET /api/auth/check`
 Kiểm tra trạng thái đăng nhập.
 
-**Response:**
+**Response (logged in):**
 ```json
 {
   "loggedIn": true,
@@ -255,8 +307,18 @@ Kiểm tra trạng thái đăng nhập.
 }
 ```
 
+**Response (not logged in):**
+```json
+{
+  "loggedIn": false
+}
+```
+
 #### `GET /api/auth/logout`
-Đăng xuất user và destroy session. Redirects về frontend.
+Đăng xuất user và destroy session. Redirects về frontend (POST_LOGIN_REDIRECT).
+
+#### `GET /api/hello`
+Example route (có thể xóa trong production).
 
 ### OIDC Configuration
 
@@ -319,12 +381,15 @@ Backend cấu hình CORS để cho phép frontend gọi API:
 
 ```typescript
 app.use(cors({
-  origin: "http://localhost:8080", // Frontend URL
-  credentials: true, // Cho phép gửi cookies
+  origin: process.env.CORS_ORIGIN || "http://localhost:8080", // Frontend URL
+  credentials: true, // Cho phép gửi cookies (session)
 }));
 ```
 
-**Lưu ý**: Cập nhật `origin` trong production để match với frontend domain.
+**Lưu ý**: 
+- Set `CORS_ORIGIN` trong environment variables để match với frontend domain
+- `credentials: true` là bắt buộc để frontend có thể gửi session cookies
+- Trong production, set `CORS_ORIGIN` với domain frontend (ví dụ: `https://your-domain.com`)
 
 ### Security Features
 
@@ -660,28 +725,35 @@ spec:
         image: <your-registry>/onboarding-app-be:latest  # Cập nhật image này
 ```
 
-### Step 2: Apply Kubernetes Manifests
+### Step 2: Tạo Kubernetes Secrets
 
-Deploy các resources theo thứ tự: Deployment → Service → Ingress
+Tạo secret chứa `CLIENT_SECRET` và `SESSION_SECRET`:
 
 ```bash
-# Apply deployment
-kubectl apply -f k8s/backend-deployment.yaml
+kubectl create secret generic oidc-secret \
+  --from-literal=CLIENT_SECRET="your-client-secret" \
+  --from-literal=SESSION_SECRET="your-session-secret"
+```
 
+**Lưu ý**: Thay thế các giá trị bằng giá trị thực tế của bạn.
+
+### Step 3: Apply Kubernetes Manifests
+
+Deploy các resources theo thứ tự: Service → Deployment
+
+```bash
 # Apply service
 kubectl apply -f k8s/backend-service.yaml
 
-# Apply ingress
-kubectl apply -f k8s/backend-ingress.yaml
+# Apply deployment
+kubectl apply -f k8s/backend-deployment.yaml
 ```
 
-Hoặc apply tất cả cùng lúc:
+**Lưu ý**: 
+- Ingress được cấu hình trong `infra/k8s/ingress.yaml` (thư mục root)
+- Ingress route `/api/(.*)` đến backend service
 
-```bash
-kubectl apply -f k8s/
-```
-
-### Step 3: Kiểm Tra Deployment Status
+### Step 4: Kiểm Tra Deployment Status
 
 ```bash
 # Kiểm tra deployment
@@ -700,16 +772,18 @@ kubectl get ingress onboarding-app-be-ingress
 kubectl describe ingress onboarding-app-be-ingress
 ```
 
-### Step 4: Cấu Hình Ingress
+### Step 5: Cấu Hình Ingress
 
 #### Ingress Configuration Overview
 
-File `backend-ingress.yaml` cấu hình ingress với các đặc điểm sau:
+Ingress được cấu hình trong `infra/k8s/ingress.yaml` (thư mục root của project) với các đặc điểm sau:
 
 - **Ingress Class**: Sử dụng NGINX Ingress Controller (`ingressClassName: nginx`)
-- **Path Routing**: Route tất cả requests từ `/api/(.*)` đến backend service
+- **Path Routing**: 
+  - Route `/api/(.*)` → Backend service (onboarding-app-be-service)
+  - Route `/(.*)` → Frontend service (onboarding-app-fe-service)
 - **Path Rewrite**: Sử dụng annotation `nginx.ingress.kubernetes.io/rewrite-target: /$1` để rewrite path
-- **Backend Service**: Trỏ đến `onboarding-app-be-service` trên port 80
+- **TLS**: Hỗ trợ HTTPS với cert-manager và Let's Encrypt
 
 #### Chi Tiết Cấu Hình Ingress
 
@@ -717,8 +791,7 @@ File `backend-ingress.yaml` cấu hình ingress với các đặc điểm sau:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: onboarding-app-be-ingress
-  namespace: default
+  name: onboarding-app-ingress
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$1
 spec:
@@ -726,11 +799,20 @@ spec:
   rules:
     - http:
         paths:
+          # Backend API
           - path: /api/(.*)
             pathType: ImplementationSpecific
             backend:
               service:
                 name: onboarding-app-be-service
+                port:
+                  number: 80
+          # Frontend React SPA
+          - path: /(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: onboarding-app-fe-service
                 port:
                   number: 80
 ```
@@ -740,7 +822,9 @@ spec:
 1. **Path Pattern**: `/api/(.*)` - Match tất cả requests bắt đầu với `/api/`
 2. **Rewrite Target**: `/$1` - Rewrite path bằng cách lấy phần sau `/api/` (capture group `$1`)
    - Ví dụ: Request đến `/api/health` sẽ được forward đến backend như `/health`
+   - Ví dụ: Request đến `/api/auth/login` sẽ được forward đến backend như `/auth/login`
 3. **Service Port**: Port 80 của service (service này forward đến container port 3000)
+4. **Frontend Route**: `/(.*)` - Tất cả requests khác được route đến frontend service
 
 #### Tùy Chỉnh Ingress
 
@@ -788,7 +872,15 @@ spec:
                   number: 80
 ```
 
-### Step 5: Truy Cập Application
+### Step 6: Deploy Ingress
+
+```bash
+# Deploy ingress từ thư mục root
+cd ../../
+kubectl apply -f infra/k8s/ingress.yaml
+```
+
+### Step 7: Truy Cập Application
 
 #### Lấy Ingress IP hoặc Hostname
 
@@ -820,7 +912,7 @@ Mở browser và truy cập:
 - `http://<INGRESS-IP>/api/health`
 - Hoặc `https://api.example.com/api/health` (nếu có TLS)
 
-### Step 6: Xem Logs và Debug
+### Step 8: Xem Logs và Debug
 
 ```bash
 # Xem logs của pods

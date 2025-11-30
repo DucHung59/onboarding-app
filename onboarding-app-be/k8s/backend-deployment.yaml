@@ -42,13 +42,15 @@ spec:
         - name: PORT
           value: "3000"
         - name: REDIRECT_URI
-          value: "https://52-246-136-171.sslip.io/api/auth/callback"
+          value: "https://52-246-136-171.sslip.io/api/auth/callback"  # Cập nhật với domain của bạn
         - name: OIDC_ISSUER
           value: "https://id-dev.mindx.edu.vn"
         - name: CLIENT_ID
           value: "mindx-onboarding"
         - name: POST_LOGIN_REDIRECT
-          value: "https://52-246-136-171.sslip.io/"
+          value: "https://52-246-136-171.sslip.io/"  # Cập nhật với domain của bạn
+        - name: CORS_ORIGIN
+          value: "https://52-246-136-171.sslip.io"  # Cập nhật với domain frontend của bạn
         - name: CLIENT_SECRET
           valueFrom:
             secretKeyRef:

@@ -10,7 +10,7 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: "http://localhost:8080", // frontend URL
+    origin: process.env.CORS_ORIGIN || "http://localhost:8080", // frontend URL
     credentials: true, // cho phép gửi cookie session
   })
 );
@@ -21,14 +21,14 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // set true when https production
+    secure: process.env.NODE_ENV === 'production', // set true when https production
     httpOnly: true,
   }
 }));
 
 // routes
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok'})
+  res.status(200).json({ status: 'ok' })
 });
 app.use("/hello", helloRouter);
 app.use("/auth", authRouter);

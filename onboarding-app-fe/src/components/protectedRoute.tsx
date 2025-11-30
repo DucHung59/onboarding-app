@@ -11,11 +11,17 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const [authenticated, setAuthenticated] = useState(false);
 
   useEffect(() => {
-    api.get('/auth/check')
+    api.get('/auth/check', { withCredentials: true })
       .then(res => {
-        setAuthenticated(res.data.loggedIn);
+        setAuthenticated(res.data.loggedIn || false);
+        if (!res.data.loggedIn) {
+          console.log('User not authenticated, redirecting to login');
+        }
       })
-      .catch(() => setAuthenticated(false))
+      .catch((err) => {
+        console.error('Auth check failed:', err);
+        setAuthenticated(false);
+      })
       .finally(() => setLoading(false));
   }, []);
 

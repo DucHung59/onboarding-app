@@ -7,20 +7,27 @@ export default function AuthButton() {
 
     useEffect(() => {
         api.get("/auth/me", { withCredentials: true })
-        .then((res) => 
-            {
+            .then((res) => {
                 localStorage.setItem('user', JSON.stringify(res.data));
                 setUser(res.data)
             })
-        .catch(() => setUser(null));
+            .catch(() => setUser(null));
     }, []);
 
+    const getApiBaseUrl = () => {
+        return process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
+    };
+
     const login = () => {
-        window.location.href = "api/auth/login";
+        const apiBaseUrl = getApiBaseUrl();
+        const loginUrl = `${apiBaseUrl}/auth/login`;
+        window.location.href = loginUrl;
     };
 
     const logout = () => {
-        window.location.href = "api/auth/logout";
+        const apiBaseUrl = getApiBaseUrl();
+        const logoutUrl = `${apiBaseUrl}/auth/logout`;
+        window.location.href = logoutUrl;
     };
 
     if (user) {

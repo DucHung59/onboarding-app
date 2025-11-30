@@ -55,16 +55,31 @@ Lệnh này sẽ cài đặt các dependencies:
 - **oidc-client-ts**: OpenID Connect client library
 - **TypeScript**: Type safety
 
-### 3. Cấu Hình API Base URL
+### 3. Cấu Hình Environment Variables
 
-Cập nhật API base URL trong `src/api/api.ts`:
+**Copy file mẫu và tạo file `.env.local`:**
 
-```typescript
-const api = axios.create({
-  baseURL: 'http://localhost:3000/api', // Development
-  // baseURL: 'https://your-domain.com/api', // Production
-});
+```bash
+# Copy file mẫu
+cp env.example .env.local
+
+# Hoặc trên Windows
+copy env.example .env.local
 ```
+
+Sau đó chỉnh sửa file `.env.local` với API base URL của bạn:
+
+```bash
+# .env.local
+REACT_APP_API_BASE_URL=http://localhost:3000/
+```
+
+**Lưu ý quan trọng**: 
+- Create React App sử dụng prefix `REACT_APP_` cho environment variables.
+- URL phải kết thúc bằng dấu `/` để axios hoạt động đúng với baseURL.
+- File `.env.local` không được commit vào Git (đã có trong `.gitignore`).
+- File `env.example` là template, có thể commit vào Git.
+- Trong production, `REACT_APP_API_BASE_URL` phải được set tại build-time qua Docker build ARG (xem phần Docker Build).
 
 ### 4. Chạy Development Server
 
@@ -114,14 +129,14 @@ onboarding-app-fe/
 │
 ├── src/                      # Source code
 │   ├── api/
-│   │   └── api.ts           # Axios instance configuration
+│   │   └── api.ts           # Axios instance với baseURL từ REACT_APP_API_BASE_URL
 │   ├── components/
-│   │   ├── btnLoginOID.tsx  # OIDC Login/Logout button
-│   │   └── protectedRoute.tsx # Route protection component
+│   │   ├── btnLoginOID.tsx  # OIDC Login/Logout button component
+│   │   └── protectedRoute.tsx # Route protection HOC (Higher-Order Component)
 │   ├── pages/
-│   │   ├── Home.tsx         # Home page
-│   │   ├── Login.tsx        # Login page
-│   │   └── About.tsx        # About page (protected)
+│   │   ├── Home.tsx         # Trang chủ, hiển thị authentication status
+│   │   ├── Login.tsx         # Trang đăng nhập
+│   │   └── About.tsx         # Trang về (protected route, yêu cầu authentication)
 │   ├── styles/              # CSS files
 │   ├── utils/               # Utility functions
 │   ├── App.tsx              # Main App component
@@ -159,44 +174,38 @@ onboarding-app-fe/
 
 ### Authentication Flow
 
-1. **User clicks Login** → Frontend redirects đến `/api/auth/login`
-2. **Backend redirects** đến OIDC provider
+1. **User clicks Login** → Frontend redirects đến `/api/auth/login` (backend endpoint)
+2. **Backend generates OIDC authorization URL** với PKCE, state, nonce và redirects đến OIDC provider
 3. **User authenticates** trên OIDC provider
-4. **OIDC provider redirects** về `/api/auth/callback`
-5. **Backend sets session** và redirects về frontend
-6. **Frontend checks authentication** status
+4. **OIDC provider redirects** về `/api/auth/callback` với authorization code
+5. **Backend exchanges code** cho tokens, lấy user info và lưu vào session
+6. **Backend redirects** về frontend (POST_LOGIN_REDIRECT)
+7. **Frontend checks authentication** status bằng cách gọi `/api/auth/me`
 
 ### Components
 
-#### `btnLoginOID.tsx`
-Component hiển thị nút Login/Logout dựa trên authentication status.
+#### `Home.tsx`
+Trang chủ hiển thị trạng thái authentication và nút login/logout. Component này:
+- Gọi `/api/auth/me` để kiểm tra authentication status
+- Hiển thị thông tin user nếu đã đăng nhập
+- Có nút để navigate đến trang About (protected route)
 
-```typescript
-// Kiểm tra authentication status
-api.get("/auth/me", { withCredentials: true })
-  .then((res) => {
-    setUser(res.data);
-  });
-
-// Login: Redirect đến backend OIDC endpoint
-const login = () => {
-  window.location.href = "api/auth/login";
-};
-
-// Logout: Redirect đến backend logout endpoint
-const logout = () => {
-  window.location.href = "api/auth/logout";
-};
-```
+#### `About.tsx`
+Trang về hiển thị thông tin user. Trang này:
+- Là protected route, chỉ accessible khi đã authenticated
+- Lấy thông tin user từ localStorage hoặc gọi API
+- Hiển thị email, username, displayName
 
 #### `protectedRoute.tsx`
-Component bảo vệ routes, chỉ cho phép authenticated users truy cập.
+Higher-Order Component (HOC) bảo vệ routes, chỉ cho phép authenticated users truy cập.
 
 ```typescript
-// Kiểm tra authentication
-api.get('/auth/check')
-  .then(res => {
-    setAuthenticated(res.data.loggedIn);
+// Kiểm tra authentication bằng cách gọi /api/auth/me
+api.get("/auth/me", { withCredentials: true })
+  .then((res) => {
+    if (res.data.authenticated) {
+      setAuthenticated(true);
+    }
   });
 
 // Redirect đến login nếu chưa authenticated
@@ -205,12 +214,18 @@ if (!authenticated) return <Navigate to="/login" replace />;
 
 ### API Endpoints
 
-Frontend gọi các endpoints sau từ backend:
+Frontend sử dụng Axios instance từ `api.ts` để gọi các endpoints sau từ backend:
 
-- `GET /api/auth/me` - Lấy thông tin user hiện tại
+- `GET /api/auth/me` - Lấy thông tin user hiện tại từ session
+  - Response: `{ authenticated: boolean, user: { email, username, displayName, ... } }`
 - `GET /api/auth/check` - Kiểm tra trạng thái đăng nhập
-- `GET /api/auth/login` - Bắt đầu OIDC login flow
-- `GET /api/auth/logout` - Đăng xuất
+  - Response: `{ loggedIn: boolean, user?: {...} }`
+- `GET /api/auth/login` - Bắt đầu OIDC login flow (redirect đến OIDC provider)
+- `GET /api/auth/logout` - Đăng xuất và destroy session (redirect về frontend)
+
+**Lưu ý**: 
+- Tất cả API calls sử dụng `withCredentials: true` để gửi session cookies
+- Base URL được cấu hình trong `api.ts` từ `REACT_APP_API_BASE_URL`
 
 ### CORS Configuration
 
@@ -219,10 +234,14 @@ Frontend gọi các endpoints sau từ backend:
 ```typescript
 // Backend CORS config
 app.use(cors({
-  origin: "http://localhost:3000", // Frontend URL
-  credentials: true, // Cho phép gửi cookies
+  origin: process.env.CORS_ORIGIN || "http://localhost:8080", // Frontend URL
+  credentials: true, // Cho phép gửi cookies (session)
 }));
 ```
+
+**Lưu ý**: 
+- `CORS_ORIGIN` trong backend phải match với frontend URL
+- `credentials: true` là bắt buộc để gửi session cookies
 
 ---
 
@@ -266,16 +285,31 @@ build/
 
 ## 🐳 Docker Build
 
-### Build Docker Image
+### Build Docker Image với Build-time ARG
+
+Dockerfile sử dụng build-time ARG để inject `REACT_APP_API_BASE_URL` vào build process. Đây là cách duy nhất để set environment variable cho React app vì Create React App embed các biến môi trường vào JavaScript bundle khi build.
 
 ```bash
-docker build -t onboarding-app-fe:latest .
+# Build với API URL cho local development
+docker build --build-arg REACT_APP_API_BASE_URL=http://localhost:3000/ -t onboarding-app-fe:latest .
+
+# Build với API URL cho production
+docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t onboarding-app-fe:latest .
+
+# Build với tag cụ thể
+docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t onboarding-app-fe:v1.0.0 .
 ```
+
+**Lưu ý quan trọng**:
+- `REACT_APP_API_BASE_URL` **PHẢI** được set tại build-time qua `--build-arg`
+- Environment variable này được embed vào JavaScript bundle khi build
+- **KHÔNG THỂ** thay đổi sau khi build xong bằng cách set env trong container
+- URL phải kết thúc bằng dấu `/` để axios hoạt động đúng
 
 ### Multi-stage Build
 
 Dockerfile sử dụng multi-stage build:
-1. **Stage 1 (build)**: Build React app với Node.js
+1. **Stage 1 (build)**: Build React app với Node.js, sử dụng ARG để inject `REACT_APP_API_BASE_URL`
 2. **Stage 2 (production)**: Serve static files với Nginx
 
 ### Chạy Container Locally
@@ -285,13 +319,6 @@ docker run -p 80:80 onboarding-app-fe:latest
 ```
 
 Truy cập `http://localhost` để xem ứng dụng.
-
-### Build với Tag Cụ Thể
-
-```bash
-docker build -t onboarding-app-fe:v1.0.0 .
-docker build -t onboarding-app-fe:latest .
-```
 
 ### Nginx Configuration
 
@@ -344,7 +371,19 @@ docker build -t <registry>/my-frontend:latest .
 docker push <registry>/my-frontend:latest
 ```
 
-### 2. Cập Nhật Deployment
+### 2. Build Image với Build-time ARG
+
+**Quan trọng**: Phải build image với `--build-arg` để set `REACT_APP_API_BASE_URL`:
+
+```bash
+# Build với API URL production
+docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t <registry>/my-frontend:latest .
+
+# Push image
+docker push <registry>/my-frontend:latest
+```
+
+### 3. Cập Nhật Deployment
 
 Cập nhật image trong `k8s/frontend-deployment.yaml`:
 
@@ -355,9 +394,14 @@ spec:
       containers:
       - name: onboarding-app-fe
         image: <registry>/my-frontend:latest
+        env:
+        - name: REACT_APP_API_BASE_URL
+          value: "https://your-domain.com/api"
 ```
 
-### 3. Deploy
+**Lưu ý**: Environment variable trong deployment chỉ để reference, giá trị thực tế đã được embed vào bundle khi build.
+
+### 4. Deploy
 
 ```bash
 # Deploy service
@@ -367,7 +411,7 @@ kubectl apply -f k8s/frontend-service.yaml
 kubectl apply -f k8s/frontend-deployment.yaml
 ```
 
-### 4. Kiểm Tra Deployment
+### 5. Kiểm Tra Deployment
 
 ```bash
 # Kiểm tra pods
@@ -380,7 +424,7 @@ kubectl get service onboarding-app-fe-service
 kubectl logs -f deployment/onboarding-app-fe
 ```
 
-### 5. Update Deployment
+### 6. Update Deployment
 
 ```bash
 # Update image
