@@ -71,7 +71,7 @@ Sau đó chỉnh sửa file `.env.local` với API base URL của bạn:
 
 ```bash
 # .env.local
-REACT_APP_API_BASE_URL=http://localhost:3000/
+REACT_APP_API_BASE_URL=http://localhost:3000
 ```
 
 **Lưu ý quan trọng**: 

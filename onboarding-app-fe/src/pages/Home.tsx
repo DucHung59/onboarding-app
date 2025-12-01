@@ -21,15 +21,13 @@ export default function AppHeader() {
       .then((res) => {
         if (res.data.authenticated && res.data.user) {
           const userData = res.data.user;
+          localStorage.setItem('user', JSON.stringify(res.data));
           const { email, username, displayName } = userData;
           setUser({ email, username, displayName });
           setAuthenticated(true);
-          console.log("Authenticated:", true);
-          console.log("User:", userData);
         } else {
           setAuthenticated(false);
           setUser(null);
-          console.log("Not authenticated");
         }
       })
       .catch((err) => {
@@ -60,9 +58,12 @@ export default function AppHeader() {
           <div className="d-flex ms-auto">
             {user ? (
               <>
-                <button className="btn btn-outline-light" onClick={handleLogout}>
-                  Logout
-                </button>
+                <div className="d-flex align-items-center gap-2">
+                  <span className="navbar-text text-light">Welcome, {user.email}</span>
+                  <button className="btn btn-outline-light" onClick={handleLogout}>
+                    Logout
+                  </button>
+                </div>
               </>
             ) : (
               <button className="btn btn-light" onClick={handleLogin}>
