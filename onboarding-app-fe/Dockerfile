@@ -3,9 +3,11 @@ FROM node:20-alpine AS build
 
 # Build-time ARG (quan trọng)
 ARG REACT_APP_API_BASE_URL
+ARG REACT_APP_GA_TRACKING_ID
 
 # Export ARG thành ENV để React build đọc được
 ENV REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL}
+ENV REACT_APP_GA_TRACKING_ID=${REACT_APP_GA_TRACKING_ID}
 
 # Set working directory
 WORKDIR /app
