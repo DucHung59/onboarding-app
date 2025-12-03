@@ -61,4 +61,9 @@ spec:
             secretKeyRef:
               name: oidc-secret
               key: SESSION_SECRET
+        - name: APPINSIGHTS_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: appinsights-secret
+              key: connectionString
 

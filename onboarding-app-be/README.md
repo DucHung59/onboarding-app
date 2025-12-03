@@ -8,9 +8,7 @@ API backend cho ứng dụng Onboarding, được xây dựng với Node.js, Typ
 - [Cài Đặt Local Development](#cài-đặt-local-development)
 - [Development Workflow](#development-workflow)
 - [Build và Test](#build-và-test)
-- [Docker Development](#docker-development)
-- [Deployment Process](#deployment-process)
-- [Kubernetes Deployment với Ingress](#-kubernetes-deployment-với-ingress)
+- [Docker & Deployment (tham khảo docs chung)](#docker--deployment-tham-khảo-docs-chung)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -443,7 +441,20 @@ npm install --save-dev jest @types/jest ts-jest
 
 ---
 
-## 🐳 Docker Development
+## 🐳 Docker & Deployment (tham khảo docs chung)
+
+README backend chỉ tập trung vào cách **phát triển và chạy API**; các bước build container, cấu hình ACR/AKS và OIDC chi tiết đã được gom về docs chung ở thư mục root:
+
+- **Docker build & run** (BE/FE): xem `docs/docker-setup.md`.
+- **Azure Container Registry (ACR)**: xem `docs/acr-setup.md`.
+- **Azure Kubernetes Service (AKS) + Ingress**: xem `docs/aks-setup.md`.
+- **OpenID Connect (OIDC) / Authentication**: xem `docs/oidc-authentication.md`.
+
+Khi triển khai thực tế, chỉ cần:
+
+1. Đảm bảo backend build thành công (`npm run build`) và cấu hình `.env`/env variables đúng.
+2. Làm theo hướng dẫn build Docker image + push lên ACR trong docs.
+3. Deploy manifests trong `onboarding-app-be/k8s` kết hợp với `infra/k8s` như hướng dẫn trong docs AKS.
 
 ### Build Docker Image
 
