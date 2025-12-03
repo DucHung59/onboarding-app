@@ -199,12 +199,22 @@ Frontend sẽ chạy tại `http://localhost:8080` (hoặc port khác nếu 8080
 
 ## 📚 Tài liệu triển khai chi tiết
 
-Để giữ README gọn và dễ đọc, các hướng dẫn chi tiết về Docker, ACR, AKS và Authentication đã được tách sang thư mục `docs/`:
+Để giữ README gọn và dễ đọc, các hướng dẫn chi tiết đã được tách sang thư mục `docs/`. Xem [docs/README.md](docs/README.md) để có danh sách đầy đủ các tài liệu.
 
-- **Docker**: xem `docs/docker-setup.md` – build & run container cho backend/frontend, multi-stage build.
-- **Azure Container Registry (ACR)**: xem `docs/acr-setup.md` – tạo ACR, login, build/push image, attach ACR vào AKS.
-- **Azure Kubernetes Service (AKS)**: xem `docs/aks-setup.md` – tạo cluster, cài kubectl, ingress, cert-manager, deploy BE/FE & ingress.
-- **OpenID Connect (OIDC) / Authentication**: xem `docs/oidc-authentication.md` – cấu hình provider, biến môi trường backend, auth flow, các endpoint liên quan.
+### 🐳 Container & Deployment
+
+- **[Docker Setup](docs/docker-setup.md)** – Build & run container cho backend/frontend, multi-stage build
+- **[Azure Container Registry (ACR) Setup](docs/acr-setup.md)** – Tạo ACR, login, build/push image, attach ACR vào AKS
+- **[Azure Kubernetes Service (AKS) Setup](docs/aks-setup.md)** – Tạo cluster, cài kubectl, ingress, cert-manager, deploy BE/FE & ingress
+
+### 🔐 Authentication
+
+- **[OIDC Authentication Setup](docs/oidc-authentication.md)** – Cấu hình provider, biến môi trường backend, auth flow, các endpoint liên quan
+
+### 📊 Monitoring & Analytics
+
+- **[App Insights Setup](docs/app-insights-setup.md)** – Thiết lập Azure Application Insights cho backend monitoring
+- **[Google Analytics Setup](docs/google-analytics-setup.md)** – Thiết lập Google Analytics 4 cho frontend tracking
 
 ### 5. Frontend Integration
 
