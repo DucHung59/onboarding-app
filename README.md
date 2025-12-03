@@ -8,11 +8,8 @@
 - [Cấu trúc dự án](#cấu-trúc-dự-án)
 - [Quick Start - Setup Sau Khi Pull Từ Git](#quick-start---setup-sau-khi-pull-từ-git)
 - [Setup Local Development](#setup-local-development)
-- [Docker Build](#docker-build)
-- [Azure Container Registry (ACR) Setup](#azure-container-registry-acr-setup)
-- [Azure Kubernetes Service (AKS) Setup](#azure-kubernetes-service-aks-setup)
-- [OpenID Connect (OIDC) Setup](#openid-connect-oidc-setup)
-- [Deployment](#deployment)
+- [Tài liệu triển khai chi tiết](#tài-liệu-triển-khai-chi-tiết)
+- [Deployment tổng quan](#deployment-tổng-quan)
 
 ## 🎯 Tổng quan
 
@@ -200,315 +197,14 @@ npm start
 
 Frontend sẽ chạy tại `http://localhost:8080` (hoặc port khác nếu 8080 đã được sử dụng)
 
-## 🐳 Docker Build
+## 📚 Tài liệu triển khai chi tiết
 
-### Backend Docker Build
+Để giữ README gọn và dễ đọc, các hướng dẫn chi tiết về Docker, ACR, AKS và Authentication đã được tách sang thư mục `docs/`:
 
-1. **Build Docker image:**
-```bash
-cd onboarding-app-be
-docker build -t onboarding-app-be:latest .
-```
-
-2. **Chạy container:**
-```bash
-docker run -p 3000:3000 \
-  -e PORT=3000 \
-  -e OIDC_ISSUER=https://id-dev.mindx.edu.vn \
-  -e CLIENT_ID=mindx-onboarding \
-  -e CLIENT_SECRET=your-client-secret \
-  -e REDIRECT_URI=http://localhost:3000/api/auth/callback \
-  -e POST_LOGIN_REDIRECT=http://localhost:8080 \
-  -e SESSION_SECRET=your-session-secret \
-  onboarding-app-be:latest
-```
-
-### Frontend Docker Build
-
-Frontend Dockerfile sử dụng build-time ARG để inject `REACT_APP_API_BASE_URL` vào build process.
-
-1. **Build Docker image với build-time ARG:**
-```bash
-cd onboarding-app-fe
-
-# Build với API URL cho local development
-docker build --build-arg REACT_APP_API_BASE_URL=http://localhost:3000/ -t onboarding-app-fe:latest .
-
-# Hoặc build với API URL cho production
-docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t onboarding-app-fe:latest .
-```
-
-2. **Chạy container:**
-```bash
-docker run -p 80:80 onboarding-app-fe:latest
-```
-
-Frontend sẽ chạy tại `http://localhost`
-
-**Lưu ý quan trọng**: 
-- `REACT_APP_API_BASE_URL` phải được set tại build-time (qua `--build-arg`)
-- Environment variable này được embed vào JavaScript bundle khi build
-- Không thể thay đổi sau khi build xong
-
-### Multi-stage Build
-
-Cả hai Dockerfile đều sử dụng multi-stage build để tối ưu kích thước image:
-- **Backend**: Build TypeScript → Production image với chỉ runtime dependencies
-- **Frontend**: Build React app → Nginx image để serve static files
-
-## ☁️ Azure Container Registry (ACR) Setup
-
-### 1. Tạo Azure Container Registry
-
-```bash
-# Đăng nhập Azure
-az login
-
-# Tạo resource group (nếu chưa có)
-az group create --name myResourceGroup --location eastus
-
-# Tạo ACR
-az acr create --resource-group myResourceGroup \
-  --name <your-acr-name> \
-  --sku Basic \
-  --admin-enabled true
-```
-
-### 2. Đăng nhập vào ACR
-
-```bash
-# Đăng nhập vào ACR
-az acr login --name <your-acr-name>
-
-# Hoặc sử dụng admin credentials
-az acr credential show --name <your-acr-name> --query "passwords[0].value" --output tsv
-docker login <your-acr-name>.azurecr.io -u <your-acr-name> -p <password>
-```
-
-### 3. Build và Push Images
-
-**Backend:**
-```bash
-cd onboarding-app-be
-
-# Build image với tag ACR
-docker build -t <your-acr-name>.azurecr.io/my-api:latest .
-
-# Push image lên ACR
-docker push <your-acr-name>.azurecr.io/my-api:latest
-```
-
-**Frontend:**
-```bash
-cd onboarding-app-fe
-
-# Build image với tag ACR và build-time ARG cho REACT_APP_API_BASE_URL
-docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t <your-acr-name>.azurecr.io/my-frontend:latest .
-
-# Push image lên ACR
-docker push <your-acr-name>.azurecr.io/my-frontend:latest
-```
-
-**Lưu ý quan trọng**: 
-- Frontend Dockerfile yêu cầu build-time ARG `REACT_APP_API_BASE_URL`
-- Thay thế `https://your-domain.com/api` bằng URL production của backend API
-- Environment variable này được embed vào JavaScript bundle khi build, không thể thay đổi sau khi build xong
-
-### 4. Cấu hình ACR với AKS (Attach ACR to AKS)
-
-```bash
-# Attach ACR to AKS cluster
-az aks update -n <your-aks-cluster-name> \
-  -g <your-resource-group> \
-  --attach-acr <your-acr-name>
-```
-
-Điều này cho phép AKS tự động pull images từ ACR mà không cần credentials.
-
-## ☸️ Azure Kubernetes Service (AKS) Setup
-
-### 1. Tạo AKS Cluster
-
-```bash
-# Tạo AKS cluster
-az aks create \
-  --resource-group myResourceGroup \
-  --name myAKSCluster \
-  --node-count 2 \
-  --enable-addons monitoring \
-  --generate-ssh-keys \
-  --attach-acr <your-acr-name>
-```
-
-### 2. Cài đặt kubectl và kết nối
-
-```bash
-# Cài đặt kubectl (nếu chưa có)
-az aks install-cli
-
-# Lấy credentials để kết nối với cluster
-az aks get-credentials --resource-group myResourceGroup --name myAKSCluster
-```
-
-### 3. Cài đặt Ingress Controller (NGINX)
-
-```bash
-# Thêm Helm repo
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm repo update
-
-# Cài đặt NGINX Ingress Controller
-helm install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx \
-  --create-namespace \
-  --set controller.service.type=LoadBalancer
-```
-
-### 4. Cài đặt Cert-Manager (cho SSL/TLS)
-
-```bash
-# Cài đặt cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
-
-# Đợi cert-manager sẵn sàng
-kubectl wait --for=condition=ready pod \
-  -l app.kubernetes.io/instance=cert-manager \
-  -n cert-manager \
-  --timeout=300s
-```
-
-### 5. Tạo Kubernetes Secrets
-
-Tạo secret sử dụng lệnh `kubectl create secret generic`:
-
-```bash
-kubectl create secret generic oidc-secret \
-  --from-literal=CLIENT_SECRET="giá_trị_client_secret" \
-  --from-literal=SESSION_SECRET="giá_trị_session_secret"
-```
-
-**Lưu ý:** Thay thế `giá_trị_client_secret` và `giá_trị_session_secret` bằng các giá trị thực tế của bạn.
-
-Để cập nhật secret sau này:
-```bash
-kubectl delete secret oidc-secret
-kubectl create secret generic oidc-secret \
-  --from-literal=CLIENT_SECRET="giá_trị_mới" \
-  --from-literal=SESSION_SECRET="giá_trị_mới"
-```
-
-### 6. Deploy ClusterIssuer
-
-```bash
-kubectl apply -f infra/k8s/cluster-issuer.yaml
-```
-
-### 7. Deploy Backend
-
-```bash
-# Cập nhật image trong backend-deployment.yaml nếu cần
-kubectl apply -f onboarding-app-be/k8s/backend-service.yaml
-kubectl apply -f onboarding-app-be/k8s/backend-deployment.yaml
-```
-
-### 8. Deploy Frontend
-
-```bash
-# Cập nhật image trong frontend-deployment.yaml nếu cần
-kubectl apply -f onboarding-app-fe/k8s/frontend-service.yaml
-kubectl apply -f onboarding-app-fe/k8s/frontend-deployment.yaml
-```
-
-### 9. Deploy Ingress
-
-Ingress được cấu hình để route:
-- `/api/(.*)` → Backend service (onboarding-app-be-service)
-- `/(.*)` → Frontend service (onboarding-app-fe-service)
-
-```bash
-# Lấy External IP của Ingress Controller
-kubectl get service ingress-nginx-controller -n ingress-nginx
-
-# Cập nhật host trong ingress.yaml với IP của bạn (hoặc domain)
-# File: infra/k8s/ingress.yaml
-kubectl apply -f infra/k8s/ingress.yaml
-```
-
-**Lưu ý**: 
-- Ingress sử dụng path rewrite: `/api/(.*)` được rewrite thành `/$1` khi forward đến backend
-- Ví dụ: Request đến `/api/health` sẽ được forward đến backend như `/health`
-- Frontend được serve từ root path `/(.*)` để support React Router
-
-### 10. Kiểm tra Deployment
-
-```bash
-# Kiểm tra pods
-kubectl get pods
-
-# Kiểm tra services
-kubectl get services
-
-# Kiểm tra ingress
-kubectl get ingress
-
-# Xem logs
-kubectl logs -f deployment/onboarding-app-be
-kubectl logs -f deployment/onboarding-app-fe
-```
-
-## 🔐 OpenID Connect (OIDC) Setup
-
-### 1. Cấu hình OIDC Provider
-
-Ứng dụng sử dụng OIDC provider tại `https://id-dev.mindx.edu.vn`. Bạn cần:
-
-1. **Đăng ký Client Application** trên OIDC provider với:
-   - **Client ID**: `mindx-onboarding`
-   - **Client Secret**: (lấy từ OIDC provider)
-   - **Redirect URI**: `https://your-domain.com/api/auth/callback`
-   - **Response Type**: `code`
-   - **Grant Type**: `authorization_code`
-   - **PKCE**: Enabled (code_challenge_method: S256)
-
-2. **Scopes**: `openid profile email`
-
-### 2. Cấu hình Backend
-
-Các biến môi trường cần thiết trong backend:
-
-```env
-OIDC_ISSUER=https://id-dev.mindx.edu.vn
-CLIENT_ID=mindx-onboarding
-CLIENT_SECRET=<your-client-secret>
-REDIRECT_URI=https://your-domain.com/api/auth/callback
-POST_LOGIN_REDIRECT=https://your-domain.com/
-SESSION_SECRET=<random-secret-for-session-encryption>
-```
-
-### 3. Authentication Flow
-
-1. **User clicks login** → Frontend redirects to `/api/auth/login`
-2. **Backend generates OIDC authorization URL** với:
-   - State (CSRF protection)
-   - Nonce (replay attack protection)
-   - Code challenge (PKCE)
-3. **User authenticates** trên OIDC provider
-4. **OIDC provider redirects** về `/api/auth/callback` với authorization code
-5. **Backend exchanges code** cho access token và ID token
-6. **Backend fetches user info** và lưu vào session
-7. **User được redirect** về frontend
-
-### 4. API Endpoints
-
-Backend cung cấp các endpoints sau:
-
-- `GET /health` - Health check endpoint (dùng cho Kubernetes probes)
-- `GET /api/auth/login` - Bắt đầu OIDC login flow, redirect đến OIDC provider
-- `GET /api/auth/callback` - OIDC callback handler, xử lý authorization code
-- `GET /api/auth/me` - Lấy thông tin user hiện tại từ session
-- `GET /api/auth/check` - Kiểm tra trạng thái đăng nhập
-- `GET /api/auth/logout` - Đăng xuất và destroy session
-- `GET /api/hello` - Example route (có thể xóa trong production)
+- **Docker**: xem `docs/docker-setup.md` – build & run container cho backend/frontend, multi-stage build.
+- **Azure Container Registry (ACR)**: xem `docs/acr-setup.md` – tạo ACR, login, build/push image, attach ACR vào AKS.
+- **Azure Kubernetes Service (AKS)**: xem `docs/aks-setup.md` – tạo cluster, cài kubectl, ingress, cert-manager, deploy BE/FE & ingress.
+- **OpenID Connect (OIDC) / Authentication**: xem `docs/oidc-authentication.md` – cấu hình provider, biến môi trường backend, auth flow, các endpoint liên quan.
 
 ### 5. Frontend Integration
 
@@ -526,9 +222,11 @@ Frontend sử dụng Axios để gọi API backend. Các component và pages ch�
 - **API Client**:
   - `api.ts` - Axios instance được cấu hình với `baseURL` từ `REACT_APP_API_BASE_URL`
 
-## 📦 Deployment
+## 📦 Deployment tổng quan
 
-### Workflow Deployment
+Chiến lược deployment tổng quát:
+
+1. **Build & Push images lên registry (ACR)**:
 
 1. **Build và Push Images:**
 ```bash
@@ -570,17 +268,14 @@ kubectl apply -f onboarding-app-fe/k8s/frontend-deployment.yaml
 kubectl apply -f infra/k8s/ingress.yaml
 ```
 
-4. **Rolling Update (nếu cần):**
+4. **Rolling Update (nếu cần)**:
+
 ```bash
 kubectl rollout restart deployment/onboarding-app-be
 kubectl rollout restart deployment/onboarding-app-fe
 ```
 
-### Health Checks
-
-Backend có health check endpoint tại `/health` được sử dụng cho:
-- **Readiness Probe**: Kiểm tra khi pod sẵn sàng nhận traffic
-- **Liveness Probe**: Kiểm tra khi pod còn hoạt động
+Chi tiết hơn cho từng bước (Docker, ACR, AKS, Auth) xem trong thư mục `docs/`.
 
 ## 🔧 Troubleshooting
 

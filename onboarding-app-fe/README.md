@@ -10,8 +10,7 @@ Frontend React application cho ứng dụng Onboarding với tích hợp OpenID 
 - [Cấu Trúc Project](#cấu-trúc-project)
 - [OIDC Authentication](#oidc-authentication)
 - [Build Production](#build-production)
-- [Docker Build](#docker-build)
-- [Kubernetes Deployment](#kubernetes-deployment)
+- [Docker & Deployment (tham khảo docs chung)](#docker--deployment-tham-khảo-docs-chung)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -283,177 +282,20 @@ build/
 
 ---
 
-## 🐳 Docker Build
+## 🐳 Docker & Deployment (tham khảo docs chung)
 
-### Build Docker Image với Build-time ARG
+README frontend chỉ tập trung vào cách **phát triển và build FE**; các bước build container, cấu hình ACR/AKS và OIDC chi tiết đã được gom về docs chung ở thư mục root:
 
-Dockerfile sử dụng build-time ARG để inject `REACT_APP_API_BASE_URL` vào build process. Đây là cách duy nhất để set environment variable cho React app vì Create React App embed các biến môi trường vào JavaScript bundle khi build.
+- **Docker build & run** (FE/BE): xem `docs/docker-setup.md`.
+- **Azure Container Registry (ACR)**: xem `docs/acr-setup.md`.
+- **Azure Kubernetes Service (AKS) + Ingress**: xem `docs/aks-setup.md`.
+- **OpenID Connect (OIDC) / Authentication**: xem `docs/oidc-authentication.md`.
 
-```bash
-# Build với API URL cho local development
-docker build --build-arg REACT_APP_API_BASE_URL=http://localhost:3000/ -t onboarding-app-fe:latest .
+Khi triển khai thực tế, chỉ cần:
 
-# Build với API URL cho production
-docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t onboarding-app-fe:latest .
-
-# Build với tag cụ thể
-docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t onboarding-app-fe:v1.0.0 .
-```
-
-**Lưu ý quan trọng**:
-- `REACT_APP_API_BASE_URL` **PHẢI** được set tại build-time qua `--build-arg`
-- Environment variable này được embed vào JavaScript bundle khi build
-- **KHÔNG THỂ** thay đổi sau khi build xong bằng cách set env trong container
-- URL phải kết thúc bằng dấu `/` để axios hoạt động đúng
-
-### Multi-stage Build
-
-Dockerfile sử dụng multi-stage build:
-1. **Stage 1 (build)**: Build React app với Node.js, sử dụng ARG để inject `REACT_APP_API_BASE_URL`
-2. **Stage 2 (production)**: Serve static files với Nginx
-
-### Chạy Container Locally
-
-```bash
-docker run -p 80:80 onboarding-app-fe:latest
-```
-
-Truy cập `http://localhost` để xem ứng dụng.
-
-### Nginx Configuration
-
-File `nginx.conf` cấu hình Nginx để:
-- Serve static files từ `/usr/share/nginx/html`
-- Support React Router với `try_files` directive
-- Enable gzip compression
-- Cache static assets
-
-```nginx
-server {
-    listen 80;
-    root /usr/share/nginx/html;
-    index index.html;
-
-    # SPA routing support
-    location / {
-        try_files $uri /index.html;
-    }
-
-    # Cache static assets
-    location /static/ {
-        expires 1y;
-        add_header Cache-Control "public";
-    }
-
-    # Gzip compression
-    gzip on;
-    gzip_types text/plain text/css application/javascript;
-}
-```
-
----
-
-## ☸️ Kubernetes Deployment
-
-### Prerequisites
-
-- Kubernetes cluster đang chạy
-- `kubectl` đã cấu hình
-- Container image đã được build và push lên registry
-
-### 1. Build và Push Image
-
-```bash
-# Build image với registry tag
-docker build -t <registry>/my-frontend:latest .
-
-# Push image
-docker push <registry>/my-frontend:latest
-```
-
-### 2. Build Image với Build-time ARG
-
-**Quan trọng**: Phải build image với `--build-arg` để set `REACT_APP_API_BASE_URL`:
-
-```bash
-# Build với API URL production
-docker build --build-arg REACT_APP_API_BASE_URL=https://your-domain.com/api -t <registry>/my-frontend:latest .
-
-# Push image
-docker push <registry>/my-frontend:latest
-```
-
-### 3. Cập Nhật Deployment
-
-Cập nhật image trong `k8s/frontend-deployment.yaml`:
-
-```yaml
-spec:
-  template:
-    spec:
-      containers:
-      - name: onboarding-app-fe
-        image: <registry>/my-frontend:latest
-        env:
-        - name: REACT_APP_API_BASE_URL
-          value: "https://your-domain.com/api"
-```
-
-**Lưu ý**: Environment variable trong deployment chỉ để reference, giá trị thực tế đã được embed vào bundle khi build.
-
-### 4. Deploy
-
-```bash
-# Deploy service
-kubectl apply -f k8s/frontend-service.yaml
-
-# Deploy deployment
-kubectl apply -f k8s/frontend-deployment.yaml
-```
-
-### 5. Kiểm Tra Deployment
-
-```bash
-# Kiểm tra pods
-kubectl get pods -l app=onboarding-app-fe
-
-# Kiểm tra service
-kubectl get service onboarding-app-fe-service
-
-# Xem logs
-kubectl logs -f deployment/onboarding-app-fe
-```
-
-### 6. Update Deployment
-
-```bash
-# Update image
-kubectl set image deployment/onboarding-app-fe \
-  onboarding-app-fe=<new-image>:<tag>
-
-# Hoặc apply lại file đã cập nhật
-kubectl apply -f k8s/frontend-deployment.yaml
-
-# Xem rollout status
-kubectl rollout status deployment/onboarding-app-fe
-```
-
-### Ingress Configuration
-
-Frontend được expose qua Ingress (xem `infra/k8s/ingress.yaml`):
-
-```yaml
-# Frontend route
-- path: /(.*)
-  pathType: ImplementationSpecific
-  backend:
-    service:
-      name: onboarding-app-fe-service
-      port:
-        number: 80
-```
-
----
+1. Đảm bảo build FE thành công (`npm run build`) và cấu hình `REACT_APP_API_BASE_URL` đúng (local `.env.local` hoặc Docker build arg).
+2. Làm theo hướng dẫn Docker + ACR trong docs để build/push image.
+3. Deploy manifests trong `onboarding-app-fe/k8s` kết hợp với `infra/k8s` như hướng dẫn trong docs AKS.
 
 ## 🔧 Troubleshooting
 
